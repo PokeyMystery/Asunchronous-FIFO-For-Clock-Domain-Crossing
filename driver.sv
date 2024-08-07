@@ -1,29 +1,49 @@
-class agent extends uvm_agent;
-  `uvm_component_utils(agent)
+class driver extends uvm_driver #(Item);              
+  `uvm_component_utils(driver)
   
-  virtual asy_fifo_intf r_inf;
-  function new(string name="agent", uvm_component parent=null);
+  function new(string name = "driver", uvm_component parent=null);
     super.new(name, parent);
   endfunction
   
-  driver 		d0; 	
-  monitor 		m0; 	
-  uvm_sequencer #(Item)	s0; 		
-
+  virtual asy_fifo_intf vif;
+  
   virtual function void build_phase(uvm_phase phase);
     super.build_phase(phase);
-    if (!uvm_config_db#(virtual asy_fifo_intf)::get(this, "", "des_vif", r_inf))
-      `uvm_fatal("AGT", "Did not get vif")
-    
-      uvm_config_db#(virtual asy_fifo_intf)::set(this,"*","dut_inf",r_inf);
-    s0 = uvm_sequencer#(Item)::type_id::create("s0", this);
-    d0 = driver::type_id::create("d0", this);
-    m0 = monitor::type_id::create("m0", this);
+    if (!uvm_config_db#(virtual asy_fifo_intf)::get(this, "", "des_vif", vif))
+      `uvm_fatal("DRV", "Could not get vif")
   endfunction
   
-  virtual function void connect_phase(uvm_phase phase);
-    super.connect_phase(phase);
-    d0.seq_item_port.connect(s0.seq_item_export);
-  endfunction
+  virtual task run_phase(uvm_phase phase);
+    super.run_phase(phase);
+    forever begin
+      Item m_item;
+      `uvm_info("DRV", $sformatf("Wait for item from sequencer"), UVM_HIGH)
+      seq_item_port.get_next_item(m_item);
+      fork
+        drive_wr_item(m_item); 
+        drive_rd_item(m_item); 
+      join
+      seq_item_port.item_done();
+    end
+  endtask
+  
+  virtual task drive_wr_item(Item m_item); 
+    // `uvm_info("DRV", $sformatf("drive new item: %s", m_item.convert2str()), UVM_MEDIUM);
+    @(vif.drv_cb_wr);
+    if (!vif.flag_full) begin
+      vif.drv_cb_wr.wr_en <= m_item.wr_en;
+      vif.drv_cb_wr.wr_data <= m_item.wr_data; 
+    end else begin
+      vif.drv_cb_wr.wr_en <= 0;
+    end
+  endtask
 
+  virtual task drive_rd_item(Item m_item); 
+    @(vif.drv_cb_rd);
+    if (!vif.flag_empty) begin
+      vif.drv_cb_rd.rd_en <= m_item.rd_en; 
+    end else begin
+      vif.drv_cb_rd.rd_en <= 0; 
+    end
+  endtask
 endclass
