@@ -1,3 +1,5 @@
+//Author: PUNITH P
+
 module asy_fifo#(
   parameter WIDTH = 8,
   parameter DEPTH = 12
